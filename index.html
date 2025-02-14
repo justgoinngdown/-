@@ -222,14 +222,48 @@
     </footer>
 
     <script>
-        // 数字增长动画
+        // 防抖函数：优化频繁调用
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // 节流函数：限制执行频率
+        function throttle(func, limit) {
+            let inThrottle;
+            return function(...args) {
+                if (!inThrottle) {
+                    func.apply(this, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            }
+        }
+
+        // 优化的数字增长动画
         function animateValue(element, start, end, duration) {
+            if (!element) return;
+            
+            // 使用 requestAnimationFrame 优化动画性能
             let startTimestamp = null;
             const step = (timestamp) => {
                 if (!startTimestamp) startTimestamp = timestamp;
                 const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-                const value = Math.floor(progress * (end - start) + start);
-                element.textContent = value;
+                
+                // 使用缓动函数使动画更自然
+                const easeOutQuad = t => t * (2 - t);
+                const currentValue = Math.floor(start + (end - start) * easeOutQuad(progress));
+                
+                // 使用 textContent 而不是 innerHTML，性能更好
+                element.textContent = currentValue.toLocaleString();
+                
                 if (progress < 1) {
                     window.requestAnimationFrame(step);
                 }
@@ -237,39 +271,59 @@
             window.requestAnimationFrame(step);
         }
 
-        // 监听元素进入视口
+        // 优化的滚动监听器
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
+                    // 添加动画类
                     entry.target.classList.add('animate__animated', 'animate__fadeInUp');
+                    
+                    // 如果是统计数字，开始动画
+                    if (entry.target.classList.contains('stat-value')) {
+                        const value = parseInt(entry.target.getAttribute('data-value') || '0');
+                        animateValue(entry.target, 0, value, 2000);
+                    }
+                    
+                    // 取消观察，避免重复触发
                     observer.unobserve(entry.target);
                 }
             });
+        }, {
+            // 优化观察器配置
+            threshold: 0.1,
+            rootMargin: '50px'
         });
 
-        // 获取统计数据并添加动画
-        fetch('php/get_stats.php')
-            .then(response => response.json())
-            .then(data => {
-                const elements = {
-                    equipment: document.querySelector('.statistics .stat-item:nth-child(1) .stat-value'),
-                    staff: document.querySelector('.statistics .stat-item:nth-child(2) .stat-value'),
-                    projects: document.querySelector('.statistics .stat-item:nth-child(3) .stat-value')
-                };
+        // 统计数据加载和动画
+        document.addEventListener('DOMContentLoaded', () => {
+            // 预先设置统计数据
+            const stats = {
+                equipment: 502,
+                staff: 162,
+                projects: 10
+            };
 
-                Object.entries(data).forEach(([key, value]) => {
-                    if (elements[key]) {
-                        animateValue(elements[key], 0, value, 2000);
-                    }
-                });
-            })
-            .catch(error => console.error('Error:', error));
+            // 初始化统计数字
+            Object.entries(stats).forEach(([key, value]) => {
+                const element = document.querySelector(`.statistics .stat-item:nth-child(${
+                    key === 'equipment' ? '1' : key === 'staff' ? '2' : '3'
+                }) .stat-value`);
+                
+                if (element) {
+                    element.setAttribute('data-value', value);
+                    element.textContent = '0';
+                    observer.observe(element);
+                }
+            });
 
-        // 添加滚动动画
-        document.querySelectorAll('section').forEach(section => {
-            observer.observe(section);
+            // 优化滚动监听
+            const sections = document.querySelectorAll('section');
+            sections.forEach(section => {
+                observer.observe(section);
+            });
         });
 
+        // 优化页面加载性能
         if (window.netlifyIdentity) {
             window.netlifyIdentity.on("init", user => {
                 if (!user) {
@@ -279,6 +333,23 @@
                 }
             });
         }
+
+        // 优化滚动事件监听
+        const scrollHandler = throttle(() => {
+            // 处理滚动相关的视觉效果
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const header = document.querySelector('header');
+            
+            if (header) {
+                if (scrollTop > 50) {
+                    header.classList.add('scrolled');
+                } else {
+                    header.classList.remove('scrolled');
+                }
+            }
+        }, 100); // 每100ms最多执行一次
+
+        window.addEventListener('scroll', scrollHandler, { passive: true });
     </script>
 </body>
 </html> 
